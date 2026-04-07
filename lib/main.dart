@@ -39,13 +39,191 @@ class HabitQuestApp extends StatelessWidget {
           secondary: AppColors.neonGreen,
         ),
       ),
-      home: const MainLayout(),
+      home: const LoginScreen(),
+    );
+  }
+}
+
+class LoginScreen extends StatefulWidget {
+  const LoginScreen({super.key});
+
+  @override
+  State<LoginScreen> createState() => _LoginScreenState();
+}
+
+class _LoginScreenState extends State<LoginScreen> {
+  final TextEditingController _usernameController = TextEditingController();
+  final TextEditingController _passwordController = TextEditingController();
+  final TextEditingController _fullNameController = TextEditingController();
+
+  final List<String> validUsernames = ['faizan', 'admin', 'sharjeel','wannabenomi'];
+  final List<String> validPasswords = ['shadow123', 'admin', 'sharj','nomi'];
+  final List<String> validFullNames = ['Faizan Ahmad', 'Admin', 'Sharjeel Farsheed','Nouman Ahmed'];
+
+  bool isLoginMode = true;
+
+  void _submit() {
+    final username = _usernameController.text.trim();
+    final password = _passwordController.text.trim();
+    final fullName = _fullNameController.text.trim();
+
+    if (isLoginMode) {
+      int loggedInIndex = -1;
+      for (int i = 0; i < validUsernames.length; i++) {
+        if (validUsernames[i] == username && validPasswords[i] == password) {
+          loggedInIndex = i;
+          break;
+        }
+      }
+
+      if (loggedInIndex != -1) {
+        String userFullName = validFullNames.length > loggedInIndex ? validFullNames[loggedInIndex] : username;
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(builder: (context) => MainLayout(fullName: userFullName)),
+        );
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Login Failed.....Please Try Again'),
+            backgroundColor: AppColors.deepRed,
+          ),
+        );
+      }
+    } else {
+      if (username.isNotEmpty && password.isNotEmpty && fullName.isNotEmpty) {
+        validUsernames.add(username);
+        validPasswords.add(password);
+        validFullNames.add(fullName);
+        setState(() {
+          isLoginMode = true;
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Signup successful! Please login.'),
+            backgroundColor: AppColors.darkGreen,
+          ),
+        );
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      body: SafeArea(
+        child: Center(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.all(24.0),
+            child: Container(
+              decoration: BoxDecoration(
+                color: AppColors.pureWhite,
+                border: Border.all(color: AppColors.pureBlack, width: 3),
+              ),
+              padding: const EdgeInsets.all(24),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    isLoginMode ? 'SYSTEM LOGIN' : 'NEW REGISTRATION',
+                    style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w900),
+                  ),
+                  const SizedBox(height: 32),
+                  if (!isLoginMode) ...[
+                    TextField(
+                      controller: _fullNameController,
+                      decoration: const InputDecoration(
+                        labelText: 'FULL NAME',
+                        border: OutlineInputBorder(
+                          borderSide: BorderSide(color: AppColors.pureBlack, width: 2),
+                        ),
+                        enabledBorder: OutlineInputBorder(
+                          borderSide: BorderSide(color: AppColors.pureBlack, width: 2),
+                        ),
+                        focusedBorder: OutlineInputBorder(
+                          borderSide: BorderSide(color: AppColors.neonGreen, width: 2),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                  ],
+                  TextField(
+                    controller: _usernameController,
+                    decoration: const InputDecoration(
+                      labelText: 'USERNAME',
+                      border: OutlineInputBorder(
+                        borderSide: BorderSide(color: AppColors.pureBlack, width: 2),
+                      ),
+                      enabledBorder: OutlineInputBorder(
+                        borderSide: BorderSide(color: AppColors.pureBlack, width: 2),
+                      ),
+                      focusedBorder: OutlineInputBorder(
+                        borderSide: BorderSide(color: AppColors.neonGreen, width: 2),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  TextField(
+                    controller: _passwordController,
+                    obscureText: true,
+                    decoration: const InputDecoration(
+                      labelText: 'PASSWORD',
+                      border: OutlineInputBorder(
+                        borderSide: BorderSide(color: AppColors.pureBlack, width: 2),
+                      ),
+                      enabledBorder: OutlineInputBorder(
+                        borderSide: BorderSide(color: AppColors.pureBlack, width: 2),
+                      ),
+                      focusedBorder: OutlineInputBorder(
+                        borderSide: BorderSide(color: AppColors.neonGreen, width: 2),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 32),
+                  SizedBox(
+                    width: double.infinity,
+                    height: 50,
+                    child: ElevatedButton(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: AppColors.pureBlack,
+                        foregroundColor: AppColors.pureWhite,
+                        shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
+                      ),
+                      onPressed: _submit,
+                      child: Text(
+                        isLoginMode ? 'LOG IN' : 'REGISTER',
+                        style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  TextButton(
+                    onPressed: () {
+                      setState(() {
+                        isLoginMode = !isLoginMode;
+                        _usernameController.clear();
+                        _passwordController.clear();
+                        _fullNameController.clear();
+                      });
+                    },
+                    child: Text(
+                      isLoginMode ? 'CREATE NEW ACCOUNT' : 'RETURN TO LOGIN',
+                      style: const TextStyle(color: AppColors.pureBlack, fontWeight: FontWeight.bold),
+                    ),
+                  )
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
     );
   }
 }
 
 class MainLayout extends StatefulWidget {
-  const MainLayout({super.key});
+  final String fullName;
+  const MainLayout({super.key, required this.fullName});
 
   @override
   State<MainLayout> createState() => _MainLayoutState();
@@ -54,9 +232,9 @@ class MainLayout extends StatefulWidget {
 class _MainLayoutState extends State<MainLayout> {
   int _currentIndex = 0;
 
-  final List<Widget> _screens = [
+  List<Widget> get _screens => [
     const DashboardScreen(),
-    const ProfileScreen(),
+    ProfileScreen(fullName: widget.fullName),
     const Center(child: Text('RANKING')),
     const Center(child: Text('SETTINGS')),
   ];
@@ -94,8 +272,37 @@ class _MainLayoutState extends State<MainLayout> {
 }
 
 // ================= Dashboard Screen =================
-class DashboardScreen extends StatelessWidget {
+class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
+
+  @override
+  State<DashboardScreen> createState() => _DashboardScreenState();
+}
+
+class _DashboardScreenState extends State<DashboardScreen> {
+  final Map<String, int> stats = {
+    'STRENGTH': 142,
+    'AGILITY': 89,
+    'INTELLECT': 205,
+    'VITALITY': 118,
+  };
+
+  void _applyRewards(List<String> tags) {
+    setState(() {
+      for (var tag in tags) {
+        final parts = tag.split(' ');
+        if (parts.length >= 2 && parts[0].startsWith('+')) {
+          final val = int.tryParse(parts[0].substring(1)) ?? 0;
+          final statName = parts[1].toUpperCase();
+          if (stats.containsKey(statName)) {
+            stats[statName] = (stats[statName] ?? 0) + val;
+          } else {
+            stats[statName] = val;
+          }
+        }
+      }
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -109,7 +316,21 @@ class DashboardScreen extends StatelessWidget {
               'SOVEREIGN PROTOCOL',
               style: TextStyle(fontWeight: FontWeight.w900, fontSize: 16),
             ),
-            const Icon(Icons.settings, color: AppColors.pureBlack),
+            Row(
+              children: [
+                const Icon(Icons.settings, color: AppColors.pureBlack),
+                const SizedBox(width: 16),
+                GestureDetector(
+                  onTap: () {
+                    Navigator.pushReplacement(
+                      context,
+                      MaterialPageRoute(builder: (context) => const LoginScreen()),
+                    );
+                  },
+                  child: const Icon(Icons.logout, color: AppColors.deepRed),
+                ),
+              ],
+            ),
           ],
         ),
         const SizedBox(height: 16),
@@ -140,45 +361,48 @@ class DashboardScreen extends StatelessWidget {
           childAspectRatio: 1.5,
           mainAxisSpacing: 16,
           crossAxisSpacing: 16,
-          children: const [
-            StatBox(title: 'STRENGTH', value: '142'),
-            StatBox(title: 'AGILITY', value: '89'),
-            StatBox(title: 'INTELLECT', value: '205'),
-            StatBox(title: 'VITALITY', value: '118'),
+          children: [
+            StatBox(title: 'STRENGTH', value: '${stats['STRENGTH']}'),
+            StatBox(title: 'AGILITY', value: '${stats['AGILITY']}'),
+            StatBox(title: 'INTELLECT', value: '${stats['INTELLECT']}'),
+            StatBox(title: 'VITALITY', value: '${stats['VITALITY']}'),
           ],
         ),
         const SizedBox(height: 32),
         const SectionHeader(title: 'DAILY QUESTS', subtitle: '03 / 08 REW. OBTAINED'),
         const SizedBox(height: 16),
-        const QuestItem(title: 'DRINK 2L WATER', desc: 'Maintain biological peak performance', tags: ['+10 STAMINA', '+5 FOCUS']),
-        const QuestItem(title: 'GO TO THE GYM', desc: 'Physical vessel strengthening required', tags: ['+25 STRENGTH', '+15 VITALITY'], isIncomplete: true),
-        // Active Buff representation
-        Container(
-          height: 150,
-          margin: const EdgeInsets.only(top: 16),
-          decoration: BoxDecoration(
-            color: Colors.blueGrey[100],
-            border: Border.all(color: AppColors.pureBlack, width: 2),
-            image: const DecorationImage(
-              image: NetworkImage('https://dummyimage.com/600x400/000/fff&text=HoloUI'),
-              fit: BoxFit.cover,
-              opacity: 0.5,
-            )
-          ),
-          child: Padding(
-             padding: const EdgeInsets.all(16.0),
-             child: Column(
-               crossAxisAlignment: CrossAxisAlignment.start,
-               children: [
-                 Container(color: AppColors.pureBlack, padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2), child: const Text('ACTIVE BUFF', style: TextStyle(color: AppColors.pureWhite, fontSize: 10, fontWeight: FontWeight.bold))),
-                 const Spacer(),
-                 const Text('THE MONARCH\'S FOCUS', style: TextStyle(fontSize: 24, fontWeight: FontWeight.w900, color: AppColors.pureBlack)),
-                 const SizedBox(height: 8),
-                 const Text('2H 14M REMAINING', style: TextStyle(fontWeight: FontWeight.bold)),
-               ],
-             )
-          )
-        ).animate().fade().slideY(begin: 0.1, end: 0)
+        QuestItem(
+          title: 'DRINK 2L WATER', 
+          desc: 'Maintain biological peak performance', 
+          tags: const ['+10 STAMINA', '+5 FOCUS'],
+          isIncomplete: true,
+          icon: const Icon(Icons.water_drop),
+          onComplete: () => _applyRewards(['+10 STAMINA', '+5 FOCUS']),
+        ),
+        QuestItem(
+          title: 'GO TO THE GYM', 
+          desc: 'Physical vessel strengthening required', 
+          tags: const ['+25 STRENGTH', '+15 VITALITY'], 
+          isIncomplete: true,
+          icon: const Icon(Icons.fitness_center),
+          onComplete: () => _applyRewards(['+25 STRENGTH', '+15 VITALITY']),
+        ),
+        QuestItem(
+          title: 'READ 10 PAGES', 
+          desc: 'Mental expansion protocol', 
+          tags: const ['+15 WISDOM', '+10 INTELLECT'], 
+          isIncomplete: true,
+          icon: const Icon(Icons.menu_book),
+          onComplete: () => _applyRewards(['+15 WISDOM', '+10 INTELLECT']),
+        ),
+        QuestItem(
+          title: 'MEDITATE', 
+          desc: 'Aura and mind regeneration', 
+          tags: const ['+20 MANA', '+15 AGILITY'],
+          isIncomplete: true,
+          icon: const Icon(Icons.self_improvement),
+          onComplete: () => _applyRewards(['+20 MANA', '+15 AGILITY']),
+        ),
       ],
     );
   }
@@ -186,7 +410,8 @@ class DashboardScreen extends StatelessWidget {
 
 // ================= Profile Screen =================
 class ProfileScreen extends StatelessWidget {
-  const ProfileScreen({super.key});
+  final String fullName;
+  const ProfileScreen({super.key, required this.fullName});
 
   @override
   Widget build(BuildContext context) {
@@ -212,7 +437,7 @@ class ProfileScreen extends StatelessWidget {
             children: [
                Container(color: AppColors.pureBlack, padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2), child: const Text('S-RANK HUNTER IDENTIFIED', style: TextStyle(color: AppColors.pureWhite, fontSize: 10, fontWeight: FontWeight.bold))),
                const SizedBox(height: 8),
-               const Text('Faizan Ahmad', style: TextStyle(fontSize: 32, fontWeight: FontWeight.w900)),
+               Text(fullName, style: const TextStyle(fontSize: 32, fontWeight: FontWeight.w900)),
                const Text('The Shadow Monarch', style: TextStyle(color: AppColors.deepRed, fontWeight: FontWeight.bold)),
                const SizedBox(height: 16),
             ],
@@ -311,8 +536,10 @@ class QuestItem extends StatefulWidget {
   final String desc;
   final List<String> tags;
   final bool isIncomplete;
+  final Icon icon;
+  final VoidCallback? onComplete;
   
-  const QuestItem({super.key, required this.title, required this.desc, required this.tags, this.isIncomplete = false});
+  const QuestItem({super.key, required this.title, required this.desc, required this.tags, this.isIncomplete = false, required this.icon, this.onComplete});
 
   @override
   State<QuestItem> createState() => _QuestItemState();
@@ -356,7 +583,7 @@ class _QuestItemState extends State<QuestItem> {
                   Container(
                     width: 40, height: 40,
                     decoration: BoxDecoration(border: Border.all(color: AppColors.pureBlack, width: 2)),
-                    child: const Icon(Icons.water_drop),
+                    child: widget.icon,
                   ),
                   Row(
                     children: widget.tags.map((tag) => Padding(
@@ -393,6 +620,9 @@ class _QuestItemState extends State<QuestItem> {
                       if (!isCompleted) {
                         setState(() => isCompleted = true);
                         _controller.play();
+                        if (widget.onComplete != null) {
+                          widget.onComplete!();
+                        }
                       }
                     },
                     child: Container(
