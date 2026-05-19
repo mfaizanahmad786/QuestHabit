@@ -3,21 +3,27 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:percent_indicator/percent_indicator.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:confetti/confetti.dart';
+import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_database/firebase_database.dart';
+import 'dart:async';
+import 'ranking_screen.dart';
+import 'ranking_logic.dart';
+import 'custom_quest.dart';
+import 'custom_quests_screen.dart';
+import 'settings_screen.dart';
 
-void main() {
+import 'firebase_options.dart';
+import 'app_colors.dart';
+
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  
+  await Firebase.initializeApp(
+    options: DefaultFirebaseOptions.currentPlatform,
+  );
+
   runApp(const HabitQuestApp());
-}
-
-class AppColors {
-  static const Color background = Color(0xFFF0F0F0);
-  static const Color pureWhite = Colors.white;
-  static const Color pureBlack = Colors.black;
-  static const Color neonGreen = Color(0xFF00FF41);
-  static const Color mutedGreen = Color(0xFFD4E5DB);
-  static const Color darkGreen = Color(0xFF008000);
-  static const Color deepRed = Color(0xFF8B0000);
-  static const Color mutedRed = Color(0xFFE5D4D4);
-  static const Color softBlue = Color(0xFFD4E0E5);
 }
 
 class HabitQuestApp extends StatelessWidget {
@@ -52,51 +58,68 @@ class LoginScreen extends StatefulWidget {
 }
 
 class _LoginScreenState extends State<LoginScreen> {
-  final TextEditingController _usernameController = TextEditingController();
+  final TextEditingController _emailController = TextEditingController();
   final TextEditingController _passwordController = TextEditingController();
   final TextEditingController _fullNameController = TextEditingController();
 
-  final List<String> validUsernames = ['faizan', 'admin', 'sharjeel','wannabenomi'];
-  final List<String> validPasswords = ['shadow123', 'admin', 'sharj','nomi'];
-  final List<String> validFullNames = ['Faizan Ahmad', 'Admin', 'Sharjeel Farsheed','Nouman Ahmed'];
-
   bool isLoginMode = true;
 
-  void _submit() {
-    final username = _usernameController.text.trim();
+  Future<void> _submit() async {
+    final email = _emailController.text.trim();
     final password = _passwordController.text.trim();
     final fullName = _fullNameController.text.trim();
 
-    if (isLoginMode) {
-      int loggedInIndex = -1;
-      for (int i = 0; i < validUsernames.length; i++) {
-        if (validUsernames[i] == username && validPasswords[i] == password) {
-          loggedInIndex = i;
-          break;
-        }
-      }
+    if (email.isEmpty || password.isEmpty || (!isLoginMode && fullName.isEmpty)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please fill all required fields'), backgroundColor: AppColors.deepRed),
+      );
+      return;
+    }
 
-      if (loggedInIndex != -1) {
-        String userFullName = validFullNames.length > loggedInIndex ? validFullNames[loggedInIndex] : username;
+    try {
+      if (isLoginMode) {
+        // Login Flow
+        UserCredential userCredential = await FirebaseAuth.instance.signInWithEmailAndPassword(
+          email: email,
+          password: password,
+        );
+        await syncHunterNameToDatabase();
+        String userFullName = hunterNameFromAuth(userCredential.user);
+        if (!mounted) return;
         Navigator.pushReplacement(
           context,
           MaterialPageRoute(builder: (context) => MainLayout(fullName: userFullName)),
         );
       } else {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Login Failed.....Please Try Again'),
-            backgroundColor: AppColors.deepRed,
-          ),
+        // Registration Flow
+        UserCredential userCredential = await FirebaseAuth.instance.createUserWithEmailAndPassword(
+          email: email,
+          password: password,
         );
-      }
-    } else {
-      if (username.isNotEmpty && password.isNotEmpty && fullName.isNotEmpty) {
-        validUsernames.add(username);
-        validPasswords.add(password);
-        validFullNames.add(fullName);
+        
+        await userCredential.user?.updateDisplayName(fullName);
+        
+        final userRef = FirebaseDatabase.instance.ref('users/${userCredential.user!.uid}');
+        await userRef.set({
+          'name': fullName,
+          'level': 1,
+          'points': 0,
+          'rank': 'E',
+          'currentDay': 1,
+          'totalDays': 90,
+          'stats': {
+            'STRENGTH': 10,
+            'WISDOM': 10,
+            'VITALITY': 10,
+            'STAMINA': 10,
+          },
+          'overallRating': _startingOverallRating,
+        });
+        
+        if (!mounted) return;
         setState(() {
           isLoginMode = true;
+          _passwordController.clear();
         });
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
@@ -105,6 +128,14 @@ class _LoginScreenState extends State<LoginScreen> {
           ),
         );
       }
+    } on FirebaseAuthException catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(e.message ?? 'Authentication failed'),
+          backgroundColor: AppColors.deepRed,
+        ),
+      );
     }
   }
 
@@ -148,9 +179,10 @@ class _LoginScreenState extends State<LoginScreen> {
                     const SizedBox(height: 16),
                   ],
                   TextField(
-                    controller: _usernameController,
+                    controller: _emailController,
+                    keyboardType: TextInputType.emailAddress,
                     decoration: const InputDecoration(
-                      labelText: 'USERNAME',
+                      labelText: 'EMAIL',
                       border: OutlineInputBorder(
                         borderSide: BorderSide(color: AppColors.pureBlack, width: 2),
                       ),
@@ -201,7 +233,7 @@ class _LoginScreenState extends State<LoginScreen> {
                     onPressed: () {
                       setState(() {
                         isLoginMode = !isLoginMode;
-                        _usernameController.clear();
+                        _emailController.clear();
                         _passwordController.clear();
                         _fullNameController.clear();
                       });
@@ -232,17 +264,31 @@ class MainLayout extends StatefulWidget {
 class _MainLayoutState extends State<MainLayout> {
   int _currentIndex = 0;
 
-  List<Widget> get _screens => [
+  late final List<Widget> _screens = [
     const DashboardScreen(),
-    ProfileScreen(fullName: widget.fullName),
-    const Center(child: Text('RANKING')),
-    const Center(child: Text('SETTINGS')),
+    const ProfileScreen(),
+    const RankingScreen(),
+    SettingsScreen(onSignOut: _signOut),
   ];
+
+  Future<void> _signOut() async {
+    await FirebaseAuth.instance.signOut();
+    if (!mounted) return;
+    Navigator.pushReplacement(
+      context,
+      MaterialPageRoute(builder: (context) => const LoginScreen()),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: SafeArea(child: _screens[_currentIndex]),
+      body: SafeArea(
+        child: IndexedStack(
+          index: _currentIndex,
+          children: _screens,
+        ),
+      ),
       bottomNavigationBar: Container(
         decoration: const BoxDecoration(
           border: Border(top: BorderSide(color: AppColors.pureBlack, width: 3)),
@@ -279,33 +325,171 @@ class DashboardScreen extends StatefulWidget {
   State<DashboardScreen> createState() => _DashboardScreenState();
 }
 
-class _DashboardScreenState extends State<DashboardScreen> {
-  final Map<String, int> stats = {
-    'STRENGTH': 142,
-    'AGILITY': 89,
-    'INTELLECT': 205,
-    'VITALITY': 118,
-  };
+int _asInt(dynamic value, [int fallback = 0]) {
+  if (value is int) return value;
+  if (value is num) return value.toInt();
+  if (value is String) return int.tryParse(value) ?? fallback;
+  return fallback;
+}
 
-  void _applyRewards(List<String> tags) {
-    setState(() {
+const int _maxOverallRating = 100;
+const int _overallRatingPerQuest = 3;
+const int _startingOverallRating = 10;
+
+int _completedQuestCount(Map<dynamic, dynamic> userData) {
+  final completed = userData['completedQuests'];
+  if (completed is List) return completed.length;
+  return 0;
+}
+
+int _overallRatingFromUserData(Map<dynamic, dynamic> userData) {
+  if (userData.containsKey('overallRating')) {
+    return _asInt(userData['overallRating']).clamp(0, _maxOverallRating);
+  }
+  // Legacy users: estimate from quests completed before this field existed
+  return (_startingOverallRating + _completedQuestCount(userData) * _overallRatingPerQuest)
+      .clamp(0, _maxOverallRating);
+}
+
+String _overallRatingSubtitle(int rating) {
+  if (rating >= 95) return 'Aggregate performance top 0.1%';
+  if (rating >= 80) return 'Elite hunter trajectory';
+  if (rating >= 60) return 'Rising sovereign candidate';
+  if (rating >= 40) return 'Steady protocol adherence';
+  return 'Foundation phase — keep grinding';
+}
+
+int _getStat(Map<dynamic, dynamic> statsMap, String key) {
+  if (statsMap[key] != null) return _asInt(statsMap[key]);
+  // Legacy accounts may still have INTELLECT instead of WISDOM
+  if (key == 'WISDOM' && statsMap['INTELLECT'] != null) {
+    return _asInt(statsMap['INTELLECT']);
+  }
+  return 10;
+}
+
+Map<String, dynamic> _defaultStats() => {
+  'STRENGTH': 10,
+  'WISDOM': 10,
+  'VITALITY': 10,
+  'STAMINA': 10,
+};
+
+class _DashboardScreenState extends State<DashboardScreen> {
+  final String? uid = FirebaseAuth.instance.currentUser?.uid;
+  DatabaseReference? _userRef;
+  Map<dynamic, dynamic> _userData = {};
+  StreamSubscription<DatabaseEvent>? _sub;
+
+  @override
+  void initState() {
+    super.initState();
+    if (uid != null) {
+      _userRef = FirebaseDatabase.instance.ref('users/$uid');
+      _sub = _userRef!.onValue.listen((event) {
+        if (event.snapshot.value != null && mounted) {
+          setState(() {
+            _userData = event.snapshot.value as Map<dynamic, dynamic>;
+          });
+        }
+      });
+    }
+  }
+
+  @override
+  void dispose() {
+    _sub?.cancel();
+    super.dispose();
+  }
+
+  void _applyRewards(List<String> tags, String questId) async {
+    try {
+      if (_userRef == null) return;
+
+      List<String> completed = [];
+      if (_userData['completedQuests'] != null) {
+        for (var item in _userData['completedQuests']) {
+          completed.add(item.toString());
+        }
+      }
+
+      if (completed.contains(questId)) return;
+      completed.add(questId);
+
+      Map<String, dynamic> currentStats = {};
+      if (_userData['stats'] != null) {
+        (_userData['stats'] as Map).forEach((k, v) {
+          currentStats[k.toString()] = _asInt(v);
+        });
+      } else {
+        currentStats = _defaultStats();
+      }
+
       for (var tag in tags) {
         final parts = tag.split(' ');
         if (parts.length >= 2 && parts[0].startsWith('+')) {
           final val = int.tryParse(parts[0].substring(1)) ?? 0;
           final statName = parts[1].toUpperCase();
-          if (stats.containsKey(statName)) {
-            stats[statName] = (stats[statName] ?? 0) + val;
-          } else {
-            stats[statName] = val;
-          }
+          currentStats[statName] = _asInt(currentStats[statName]) + val;
         }
       }
-    });
+
+      int currentPoints = _asInt(_userData['points']);
+      int newPoints = currentPoints + 150;
+      int newLevel = levelFromPoints(newPoints);
+      String newRank = rankTierFromPoints(newPoints);
+
+      int newOverallRating = (_overallRatingFromUserData(_userData) + _overallRatingPerQuest)
+          .clamp(0, _maxOverallRating);
+
+      if (mounted) {
+        setState(() {
+          _userData = {
+            ...Map<dynamic, dynamic>.from(_userData),
+            'stats': currentStats,
+            'points': newPoints,
+            'level': newLevel,
+            'rank': newRank,
+            'completedQuests': completed,
+            'overallRating': newOverallRating,
+          };
+        });
+      }
+
+      await _userRef!.update({
+        'stats': currentStats,
+        'points': newPoints,
+        'level': newLevel,
+        'rank': newRank,
+        'completedQuests': completed,
+        'overallRating': newOverallRating,
+      });
+    } catch (e) {
+      debugPrint('Error updating Firebase: $e');
+    }
   }
 
   @override
   Widget build(BuildContext context) {
+    final statsMap = _userData['stats'] != null
+        ? Map<dynamic, dynamic>.from(_userData['stats'] as Map)
+        : <dynamic, dynamic>{};
+    int str = _getStat(statsMap, 'STRENGTH');
+    int wisdom = _getStat(statsMap, 'WISDOM');
+    int vit = _getStat(statsMap, 'VITALITY');
+    int stamina = _getStat(statsMap, 'STAMINA');
+    int level = _asInt(_userData['level'], 1);
+    
+    int currentDay = _userData['currentDay'] ?? 1;
+    int totalDays = _userData['totalDays'] ?? 90;
+    double progressPercent = totalDays > 0 ? (currentDay / totalDays).clamp(0.0, 1.0) : 0.0;
+    String percentString = (progressPercent * 100).toStringAsFixed(1);
+    List<dynamic> completedQuests = _userData['completedQuests'] ?? [];
+    final customQuests = parseCustomQuests(_userData);
+    final builtInCount = 4;
+    final totalQuestCount = builtInCount + customQuests.length;
+    final completedCount = completedQuests.length;
+
     return ListView(
       padding: const EdgeInsets.all(16.0),
       children: [
@@ -316,21 +500,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
               'SOVEREIGN PROTOCOL',
               style: TextStyle(fontWeight: FontWeight.w900, fontSize: 16),
             ),
-            Row(
-              children: [
-                const Icon(Icons.settings, color: AppColors.pureBlack),
-                const SizedBox(width: 16),
-                GestureDetector(
-                  onTap: () {
-                    Navigator.pushReplacement(
-                      context,
-                      MaterialPageRoute(builder: (context) => const LoginScreen()),
-                    );
-                  },
-                  child: const Icon(Icons.logout, color: AppColors.deepRed),
-                ),
-              ],
-            ),
+            const Icon(Icons.shield, color: AppColors.pureBlack),
           ],
         ),
         const SizedBox(height: 16),
@@ -338,21 +508,21 @@ class _DashboardScreenState extends State<DashboardScreen> {
           'SYSTEM SYNCHRONIZATION',
           style: TextStyle(color: AppColors.darkGreen, fontWeight: FontWeight.bold, letterSpacing: 1.5),
         ),
-        const Text(
-          'DAY 30 / 90',
-          style: TextStyle(fontSize: 48, fontWeight: FontWeight.w900, height: 1.1),
+        Text(
+          'DAY $currentDay / $totalDays',
+          style: const TextStyle(fontSize: 48, fontWeight: FontWeight.w900, height: 1.1),
         ),
         const SizedBox(height: 16),
         LinearPercentIndicator(
           lineHeight: 14.0,
-          percent: 0.333,
+          percent: progressPercent,
           backgroundColor: Colors.grey[300],
           progressColor: AppColors.pureBlack,
-          trailing: const Text(' 33.3% COMPLETE', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold)),
+          trailing: Text(' $percentString% COMPLETE', style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold)),
           padding: EdgeInsets.zero,
         ),
         const SizedBox(height: 32),
-        const SectionHeader(title: 'CORE STATS', subtitle: 'LEVEL 32'),
+        SectionHeader(title: 'CORE STATS', subtitle: 'LEVEL $level'),
         const SizedBox(height: 16),
         GridView.count(
           crossAxisCount: 2,
@@ -362,46 +532,84 @@ class _DashboardScreenState extends State<DashboardScreen> {
           mainAxisSpacing: 16,
           crossAxisSpacing: 16,
           children: [
-            StatBox(title: 'STRENGTH', value: '${stats['STRENGTH']}'),
-            StatBox(title: 'AGILITY', value: '${stats['AGILITY']}'),
-            StatBox(title: 'INTELLECT', value: '${stats['INTELLECT']}'),
-            StatBox(title: 'VITALITY', value: '${stats['VITALITY']}'),
+            StatBox(title: 'STRENGTH', value: '$str'),
+            StatBox(title: 'STAMINA', value: '$stamina'),
+            StatBox(title: 'WISDOM', value: '$wisdom'),
+            StatBox(title: 'VITALITY', value: '$vit'),
           ],
         ),
         const SizedBox(height: 32),
-        const SectionHeader(title: 'DAILY QUESTS', subtitle: '03 / 08 REW. OBTAINED'),
+        SectionHeader(
+          title: 'DAILY QUESTS',
+          subtitle: '$completedCount / $totalQuestCount COMPLETE',
+        ),
         const SizedBox(height: 16),
         QuestItem(
           title: 'DRINK 2L WATER', 
           desc: 'Maintain biological peak performance', 
-          tags: const ['+10 STAMINA', '+5 FOCUS'],
-          isIncomplete: true,
+          tags: const ['+10 STAMINA', '+5 VITALITY'],
+          isAlreadyCompleted: completedQuests.contains('quest_water'),
           icon: const Icon(Icons.water_drop),
-          onComplete: () => _applyRewards(['+10 STAMINA', '+5 FOCUS']),
+          onComplete: () => _applyRewards(const ['+10 STAMINA', '+5 VITALITY'], 'quest_water'),
         ),
         QuestItem(
           title: 'GO TO THE GYM', 
           desc: 'Physical vessel strengthening required', 
-          tags: const ['+25 STRENGTH', '+15 VITALITY'], 
-          isIncomplete: true,
+          tags: const ['+25 STRENGTH', '+10 STAMINA'], 
+          isAlreadyCompleted: completedQuests.contains('quest_gym'),
           icon: const Icon(Icons.fitness_center),
-          onComplete: () => _applyRewards(['+25 STRENGTH', '+15 VITALITY']),
+          onComplete: () => _applyRewards(const ['+25 STRENGTH', '+10 STAMINA'], 'quest_gym'),
         ),
         QuestItem(
           title: 'READ 10 PAGES', 
           desc: 'Mental expansion protocol', 
-          tags: const ['+15 WISDOM', '+10 INTELLECT'], 
-          isIncomplete: true,
+          tags: const ['+20 WISDOM', '+5 VITALITY'], 
+          isAlreadyCompleted: completedQuests.contains('quest_read'),
           icon: const Icon(Icons.menu_book),
-          onComplete: () => _applyRewards(['+15 WISDOM', '+10 INTELLECT']),
+          onComplete: () => _applyRewards(const ['+20 WISDOM', '+5 VITALITY'], 'quest_read'),
         ),
         QuestItem(
           title: 'MEDITATE', 
           desc: 'Aura and mind regeneration', 
-          tags: const ['+20 MANA', '+15 AGILITY'],
-          isIncomplete: true,
+          tags: const ['+15 WISDOM', '+10 STAMINA'],
+          isAlreadyCompleted: completedQuests.contains('quest_meditate'),
           icon: const Icon(Icons.self_improvement),
-          onComplete: () => _applyRewards(['+20 MANA', '+15 AGILITY']),
+          onComplete: () => _applyRewards(const ['+15 WISDOM', '+10 STAMINA'], 'quest_meditate'),
+        ),
+        if (customQuests.isNotEmpty) ...[
+          const SizedBox(height: 24),
+          const SectionHeader(title: 'CUSTOM QUESTS', subtitle: 'USER DEPLOYED'),
+          const SizedBox(height: 16),
+          ...customQuests.map(
+            (q) => QuestItem(
+              title: q.title,
+              desc: q.desc.isEmpty ? 'Custom protocol' : q.desc,
+              tags: q.tags,
+              isAlreadyCompleted: completedQuests.contains(q.completionId),
+              icon: q.icon,
+              onComplete: () => _applyRewards(q.tags, q.completionId),
+            ),
+          ),
+        ],
+        const SizedBox(height: 24),
+        SizedBox(
+          width: double.infinity,
+          height: 48,
+          child: OutlinedButton.icon(
+            style: OutlinedButton.styleFrom(
+              foregroundColor: AppColors.pureBlack,
+              side: const BorderSide(color: AppColors.pureBlack, width: 2),
+              shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
+            ),
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (context) => const CustomQuestsScreen()),
+              );
+            },
+            icon: const Icon(Icons.add),
+            label: const Text('MANAGE CUSTOM QUESTS', style: TextStyle(fontWeight: FontWeight.bold)),
+          ),
         ),
       ],
     );
@@ -409,20 +617,73 @@ class _DashboardScreenState extends State<DashboardScreen> {
 }
 
 // ================= Profile Screen =================
-class ProfileScreen extends StatelessWidget {
-  final String fullName;
-  const ProfileScreen({super.key, required this.fullName});
+class ProfileScreen extends StatefulWidget {
+  const ProfileScreen({super.key});
+
+  @override
+  State<ProfileScreen> createState() => _ProfileScreenState();
+}
+
+class _ProfileScreenState extends State<ProfileScreen> {
+  final String? uid = FirebaseAuth.instance.currentUser?.uid;
+  DatabaseReference? _userRef;
+  Map<dynamic, dynamic> _userData = {};
+  StreamSubscription<DatabaseEvent>? _sub;
+
+  @override
+  void initState() {
+    super.initState();
+    syncHunterNameToDatabase();
+    if (uid != null) {
+      _userRef = FirebaseDatabase.instance.ref('users/$uid');
+      _sub = _userRef!.onValue.listen((event) {
+        if (event.snapshot.value != null && mounted) {
+          setState(() {
+            _userData = event.snapshot.value as Map<dynamic, dynamic>;
+          });
+        }
+      });
+    }
+  }
+
+  @override
+  void dispose() {
+    _sub?.cancel();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
+    final authUser = FirebaseAuth.instance.currentUser;
+    String fullName = resolveHunterName(
+      _userData.isNotEmpty ? _userData : {},
+      fallback: hunterNameFromAuth(authUser),
+    );
+    int level = _userData['level'] ?? 1;
+    String rank = _userData['rank'] ?? 'E';
+    
+    // Safely extract stats
+    Map<dynamic, dynamic> statsMap = _userData['stats'] != null ? Map<dynamic, dynamic>.from(_userData['stats']) : {};
+    
+    int str = _getStat(statsMap, 'STRENGTH');
+    int wisdom = _getStat(statsMap, 'WISDOM');
+    int vit = _getStat(statsMap, 'VITALITY');
+    int stamina = _getStat(statsMap, 'STAMINA');
+    int overallRating = _overallRatingFromUserData(_userData);
+
+    double strPercent = (str / 250).clamp(0.0, 1.0);
+    double wisdomPercent = (wisdom / 250).clamp(0.0, 1.0);
+    double vitPercent = (vit / 250).clamp(0.0, 1.0);
+    double staminaPercent = (stamina / 250).clamp(0.0, 1.0);
+
     return ListView(
       padding: const EdgeInsets.all(16.0),
       children: [
-        const Row(
+        Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            Text('LVL 14 • SHADOW MONARCH', style: TextStyle(fontWeight: FontWeight.w900)),
-            Icon(Icons.military_tech),
+            Text('LVL $level • SHADOW MONARCH', style: const TextStyle(fontWeight: FontWeight.w900)),
+            const Icon(Icons.military_tech),
           ],
         ),
         const SizedBox(height: 16),
@@ -435,7 +696,7 @@ class ProfileScreen extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-               Container(color: AppColors.pureBlack, padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2), child: const Text('S-RANK HUNTER IDENTIFIED', style: TextStyle(color: AppColors.pureWhite, fontSize: 10, fontWeight: FontWeight.bold))),
+               Container(color: AppColors.pureBlack, padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2), child: Text('$rank-RANK HUNTER IDENTIFIED', style: const TextStyle(color: AppColors.pureWhite, fontSize: 10, fontWeight: FontWeight.bold))),
                const SizedBox(height: 8),
                Text(fullName, style: const TextStyle(fontSize: 32, fontWeight: FontWeight.w900)),
                const Text('The Shadow Monarch', style: TextStyle(color: AppColors.deepRed, fontWeight: FontWeight.bold)),
@@ -454,27 +715,29 @@ class ProfileScreen extends StatelessWidget {
                Expanded(
                  child: Column(
                    crossAxisAlignment: CrossAxisAlignment.start,
-                   children: const [
-                     Text('OVERALL RATING', style: TextStyle(color: AppColors.pureWhite, fontSize: 18, fontWeight: FontWeight.bold)),
-                     Text('Aggregate performance top 0.1%', style: TextStyle(color: Colors.grey, fontSize: 12)),
+                   children: [
+                     const Text('OVERALL RATING', style: TextStyle(color: AppColors.pureWhite, fontSize: 18, fontWeight: FontWeight.bold)),
+                     Text(_overallRatingSubtitle(overallRating), style: const TextStyle(color: Colors.grey, fontSize: 12)),
                    ],
                  )
                ),
                Column(
-                 children: const [
-                   Text('84', style: TextStyle(color: AppColors.pureWhite, fontSize: 36, fontWeight: FontWeight.bold)),
-                   Text('+41 GROWTH', style: TextStyle(color: AppColors.neonGreen, fontSize: 10, fontWeight: FontWeight.bold)),
+                 children: [
+                   Text('$overallRating', style: const TextStyle(color: AppColors.pureWhite, fontSize: 36, fontWeight: FontWeight.bold)),
+                   Text('/ $_maxOverallRating', style: const TextStyle(color: AppColors.neonGreen, fontSize: 10, fontWeight: FontWeight.bold)),
                  ],
                )
             ],
           )
         ),
         const SizedBox(height: 24),
-        const ProfileStatBar(title: 'STRENGTH', value: '78', growth: '+12', percent: 0.78, color: AppColors.deepRed),
+        ProfileStatBar(title: 'STRENGTH', value: '$str', growth: '+${(str * 0.1).ceil()}', percent: strPercent, color: AppColors.deepRed, icon: Icons.fitness_center),
         const SizedBox(height: 12),
-        const ProfileStatBar(title: 'WISDOM', value: '92', growth: '+04', percent: 0.92, color: AppColors.darkGreen),
+        ProfileStatBar(title: 'WISDOM', value: '$wisdom', growth: '+${(wisdom * 0.1).ceil()}', percent: wisdomPercent, color: AppColors.darkGreen, icon: Icons.menu_book),
         const SizedBox(height: 12),
-        const ProfileStatBar(title: 'FOCUS', value: '65', growth: '+22', percent: 0.65, color: Colors.blue),
+        ProfileStatBar(title: 'VITALITY', value: '$vit', growth: '+${(vit * 0.1).ceil()}', percent: vitPercent, color: Colors.blue, icon: Icons.favorite),
+        const SizedBox(height: 12),
+        ProfileStatBar(title: 'STAMINA', value: '$stamina', growth: '+${(stamina * 0.1).ceil()}', percent: staminaPercent, color: Colors.orange, icon: Icons.bolt),
       ],
     );
   }
@@ -535,11 +798,11 @@ class QuestItem extends StatefulWidget {
   final String title;
   final String desc;
   final List<String> tags;
-  final bool isIncomplete;
+  final bool isAlreadyCompleted;
   final Icon icon;
   final VoidCallback? onComplete;
   
-  const QuestItem({super.key, required this.title, required this.desc, required this.tags, this.isIncomplete = false, required this.icon, this.onComplete});
+  const QuestItem({super.key, required this.title, required this.desc, required this.tags, this.isAlreadyCompleted = false, required this.icon, this.onComplete});
 
   @override
   State<QuestItem> createState() => _QuestItemState();
@@ -553,7 +816,15 @@ class _QuestItemState extends State<QuestItem> {
   void initState() {
     super.initState();
     _controller = ConfettiController(duration: const Duration(seconds: 1));
-    isCompleted = !widget.isIncomplete;
+    isCompleted = widget.isAlreadyCompleted;
+  }
+
+  @override
+  void didUpdateWidget(covariant QuestItem oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.isAlreadyCompleted != oldWidget.isAlreadyCompleted) {
+      isCompleted = widget.isAlreadyCompleted;
+    }
   }
 
   @override
@@ -590,8 +861,8 @@ class _QuestItemState extends State<QuestItem> {
                       padding: const EdgeInsets.only(left: 8.0),
                       child: Container(
                         padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                        color: widget.isIncomplete ? AppColors.mutedRed : AppColors.mutedGreen,
-                        child: Text(tag, style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: widget.isIncomplete ? AppColors.deepRed : AppColors.darkGreen)),
+                        color: !isCompleted ? AppColors.mutedRed : AppColors.mutedGreen,
+                        child: Text(tag, style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: !isCompleted ? AppColors.deepRed : AppColors.darkGreen)),
                       ),
                     )).toList(),
                   )
@@ -605,7 +876,7 @@ class _QuestItemState extends State<QuestItem> {
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  if (widget.isIncomplete)
+                  if (!isCompleted)
                     const Text('INCOMPLETE', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12))
                   else
                     Row(
@@ -653,8 +924,17 @@ class ProfileStatBar extends StatelessWidget {
   final String growth;
   final double percent;
   final Color color;
+  final IconData icon;
 
-  const ProfileStatBar({super.key, required this.title, required this.value, required this.growth, required this.percent, required this.color});
+  const ProfileStatBar({
+    super.key,
+    required this.title,
+    required this.value,
+    required this.growth,
+    required this.percent,
+    required this.color,
+    this.icon = Icons.fitness_center,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -670,7 +950,7 @@ class ProfileStatBar extends StatelessWidget {
           Row(
              mainAxisAlignment: MainAxisAlignment.spaceBetween,
              children: [
-               Container(width: 40, height: 40, decoration: BoxDecoration(border: Border.all(color: AppColors.pureBlack, width: 2)), child: const Icon(Icons.fitness_center)),
+               Container(width: 40, height: 40, decoration: BoxDecoration(border: Border.all(color: AppColors.pureBlack, width: 2)), child: Icon(icon)),
                Column(
                  crossAxisAlignment: CrossAxisAlignment.end,
                  children: [

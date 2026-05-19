@@ -1,0 +1,30 @@
+{
+  "project_info": {
+    "project_number": "765376234709",
+    "firebase_url": "https://questapp-73c19-default-rtdb.firebaseio.com",
+    "project_id": "questapp-73c19",
+    "storage_bucket": "questapp-73c19.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:765376234709:android:a4c840171189ecbec24e5c",
+        "android_client_info": {
+          "package_name": "com.example.habitquestapp"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAFNa7u5Y2bt-OIFesFd_b4eWX1XXisDLU"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
