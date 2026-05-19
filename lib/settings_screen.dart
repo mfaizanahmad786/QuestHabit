@@ -6,6 +6,7 @@ import 'dart:async';
 import 'app_colors.dart';
 import 'ranking_logic.dart';
 import 'custom_quests_screen.dart';
+import 'daily_reset.dart';
 
 Map<String, dynamic> _defaultHunterStats() => {
       'STRENGTH': 10,
@@ -111,7 +112,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   Future<void> _advanceProtocolDay() async {
     final next = (_currentDay + 1).clamp(1, _totalDays);
-    await _userRef?.update({'currentDay': next});
+    await _userRef?.update({
+      'currentDay': next,
+      'completedQuests': [],
+      'lastQuestResetDate': todayDateKey(),
+    });
   }
 
   Future<void> _setNotifications(bool value) async {
@@ -125,7 +130,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
       'All built-in and custom quests will be marked incomplete. Stats and points are kept.',
     );
     if (confirmed != true) return;
-    await _userRef?.update({'completedQuests': []});
+    await _userRef?.update({
+      'completedQuests': [],
+      'lastQuestResetDate': todayDateKey(),
+    });
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(content: Text('Daily quests reset'), backgroundColor: AppColors.darkGreen),
@@ -147,6 +155,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       'completedQuests': [],
       'overallRating': 10,
       'currentDay': 1,
+      'lastQuestResetDate': todayDateKey(),
     });
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(

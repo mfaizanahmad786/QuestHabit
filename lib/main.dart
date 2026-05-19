@@ -12,6 +12,7 @@ import 'ranking_logic.dart';
 import 'custom_quest.dart';
 import 'custom_quests_screen.dart';
 import 'settings_screen.dart';
+import 'daily_reset.dart';
 
 import 'firebase_options.dart';
 import 'app_colors.dart';
@@ -45,8 +46,81 @@ class HabitQuestApp extends StatelessWidget {
           secondary: AppColors.neonGreen,
         ),
       ),
-      home: const LoginScreen(),
+      home: const AuthGate(),
     );
+  }
+}
+
+class AuthGate extends StatelessWidget {
+  const AuthGate({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return StreamBuilder<User?>(
+      stream: FirebaseAuth.instance.authStateChanges(),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const _AuthLoadingScreen();
+        }
+
+        final user = snapshot.data;
+        if (user != null) {
+          return _AuthenticatedHome(user: user);
+        }
+
+        return const LoginScreen();
+      },
+    );
+  }
+}
+
+class _AuthLoadingScreen extends StatelessWidget {
+  const _AuthLoadingScreen();
+
+  @override
+  Widget build(BuildContext context) {
+    return const Scaffold(
+      body: Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Text(
+              'SOVEREIGN PROTOCOL',
+              style: TextStyle(fontWeight: FontWeight.w900, fontSize: 18, letterSpacing: 1.2),
+            ),
+            SizedBox(height: 8),
+            Text(
+              'SYNCHRONIZING HUNTER DATA...',
+              style: TextStyle(color: AppColors.darkGreen, fontWeight: FontWeight.bold, fontSize: 11),
+            ),
+            SizedBox(height: 24),
+            CircularProgressIndicator(color: AppColors.pureBlack),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _AuthenticatedHome extends StatefulWidget {
+  final User user;
+
+  const _AuthenticatedHome({required this.user});
+
+  @override
+  State<_AuthenticatedHome> createState() => _AuthenticatedHomeState();
+}
+
+class _AuthenticatedHomeState extends State<_AuthenticatedHome> {
+  @override
+  void initState() {
+    super.initState();
+    syncHunterNameToDatabase();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return MainLayout(fullName: hunterNameFromAuth(widget.user));
   }
 }
 
@@ -79,17 +153,12 @@ class _LoginScreenState extends State<LoginScreen> {
     try {
       if (isLoginMode) {
         // Login Flow
-        UserCredential userCredential = await FirebaseAuth.instance.signInWithEmailAndPassword(
+        await FirebaseAuth.instance.signInWithEmailAndPassword(
           email: email,
           password: password,
         );
         await syncHunterNameToDatabase();
-        String userFullName = hunterNameFromAuth(userCredential.user);
-        if (!mounted) return;
-        Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(builder: (context) => MainLayout(fullName: userFullName)),
-        );
+        // AuthGate listens to authStateChanges and shows MainLayout automatically.
       } else {
         // Registration Flow
         UserCredential userCredential = await FirebaseAuth.instance.createUserWithEmailAndPassword(
@@ -114,6 +183,7 @@ class _LoginScreenState extends State<LoginScreen> {
             'STAMINA': 10,
           },
           'overallRating': _startingOverallRating,
+          'lastQuestResetDate': todayDateKey(),
         });
         
         if (!mounted) return;
@@ -273,11 +343,7 @@ class _MainLayoutState extends State<MainLayout> {
 
   Future<void> _signOut() async {
     await FirebaseAuth.instance.signOut();
-    if (!mounted) return;
-    Navigator.pushReplacement(
-      context,
-      MaterialPageRoute(builder: (context) => const LoginScreen()),
-    );
+    // AuthGate shows LoginScreen when auth state becomes null.
   }
 
   @override
@@ -380,6 +446,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
   DatabaseReference? _userRef;
   Map<dynamic, dynamic> _userData = {};
   StreamSubscription<DatabaseEvent>? _sub;
+  bool _dailyResetRunning = false;
+  String? _dailyResetCheckedFor;
 
   @override
   void initState() {
@@ -388,11 +456,40 @@ class _DashboardScreenState extends State<DashboardScreen> {
       _userRef = FirebaseDatabase.instance.ref('users/$uid');
       _sub = _userRef!.onValue.listen((event) {
         if (event.snapshot.value != null && mounted) {
-          setState(() {
-            _userData = event.snapshot.value as Map<dynamic, dynamic>;
-          });
+          final data = event.snapshot.value as Map<dynamic, dynamic>;
+          setState(() => _userData = data);
+          _maybeResetQuestsForNewDay(data);
         }
       });
+    }
+  }
+
+  Future<void> _maybeResetQuestsForNewDay(Map<dynamic, dynamic> data) async {
+    if (_userRef == null || _dailyResetRunning) return;
+
+    final today = todayDateKey();
+    final lastReset = data['lastQuestResetDate']?.toString();
+    if (lastReset == today) {
+      _dailyResetCheckedFor = today;
+      return;
+    }
+    if (_dailyResetCheckedFor == today) return;
+
+    _dailyResetRunning = true;
+    try {
+      final didReset = await applyDailyQuestResetIfNeeded(userRef: _userRef!, userData: data);
+      if (didReset && mounted) {
+        _dailyResetCheckedFor = today;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('New day — daily quests reset'),
+            backgroundColor: AppColors.darkGreen,
+            duration: Duration(seconds: 2),
+          ),
+        );
+      }
+    } finally {
+      _dailyResetRunning = false;
     }
   }
 
