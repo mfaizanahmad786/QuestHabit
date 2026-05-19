@@ -13,13 +13,19 @@ import 'custom_quest.dart';
 import 'custom_quests_screen.dart';
 import 'settings_screen.dart';
 import 'daily_reset.dart';
+import 'onboarding_screen.dart';
+import 'goals_screen.dart';
+import 'section_header.dart';
 
 import 'firebase_options.dart';
 import 'app_colors.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  
+
+  await dotenv.load(fileName: '.env', isOptional: true);
+
   await Firebase.initializeApp(
     options: DefaultFirebaseOptions.currentPlatform,
   );
@@ -51,15 +57,43 @@ class HabitQuestApp extends StatelessWidget {
   }
 }
 
-class AuthGate extends StatelessWidget {
+class AuthGate extends StatefulWidget {
   const AuthGate({super.key});
+
+  @override
+  State<AuthGate> createState() => _AuthGateState();
+}
+
+class _AuthGateState extends State<AuthGate> {
+  bool? _onboardingComplete;
+  bool _startOnRegister = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadOnboardingStatus();
+  }
+
+  Future<void> _loadOnboardingStatus() async {
+    final complete = await isOnboardingComplete();
+    if (mounted) {
+      setState(() => _onboardingComplete = complete);
+    }
+  }
+
+  void _onOnboardingFinished() {
+    setState(() {
+      _onboardingComplete = true;
+      _startOnRegister = true;
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
     return StreamBuilder<User?>(
       stream: FirebaseAuth.instance.authStateChanges(),
       builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting) {
+        if (snapshot.connectionState == ConnectionState.waiting || _onboardingComplete == null) {
           return const _AuthLoadingScreen();
         }
 
@@ -68,7 +102,11 @@ class AuthGate extends StatelessWidget {
           return _AuthenticatedHome(user: user);
         }
 
-        return const LoginScreen();
+        if (!_onboardingComplete!) {
+          return OnboardingScreen(onComplete: _onOnboardingFinished);
+        }
+
+        return LoginScreen(startOnRegister: _startOnRegister);
       },
     );
   }
@@ -125,7 +163,9 @@ class _AuthenticatedHomeState extends State<_AuthenticatedHome> {
 }
 
 class LoginScreen extends StatefulWidget {
-  const LoginScreen({super.key});
+  final bool startOnRegister;
+
+  const LoginScreen({super.key, this.startOnRegister = false});
 
   @override
   State<LoginScreen> createState() => _LoginScreenState();
@@ -136,7 +176,13 @@ class _LoginScreenState extends State<LoginScreen> {
   final TextEditingController _passwordController = TextEditingController();
   final TextEditingController _fullNameController = TextEditingController();
 
-  bool isLoginMode = true;
+  late bool isLoginMode;
+
+  @override
+  void initState() {
+    super.initState();
+    isLoginMode = !widget.startOnRegister;
+  }
 
   Future<void> _submit() async {
     final email = _emailController.text.trim();
@@ -336,6 +382,7 @@ class _MainLayoutState extends State<MainLayout> {
 
   late final List<Widget> _screens = [
     const DashboardScreen(),
+    const GoalsScreen(),
     const ProfileScreen(),
     const RankingScreen(),
     SettingsScreen(onSignOut: _signOut),
@@ -373,6 +420,7 @@ class _MainLayoutState extends State<MainLayout> {
           selectedLabelStyle: const TextStyle(fontWeight: FontWeight.bold),
           items: const [
             BottomNavigationBarItem(icon: Icon(Icons.list_alt), label: 'QUESTS'),
+            BottomNavigationBarItem(icon: Icon(Icons.auto_awesome), label: 'GOALS'),
             BottomNavigationBarItem(icon: Icon(Icons.person), label: 'PLAYER'),
             BottomNavigationBarItem(icon: Icon(Icons.bar_chart), label: 'RANK'),
             BottomNavigationBarItem(icon: Icon(Icons.settings), label: 'SETTINGS'),
@@ -841,30 +889,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
 }
 
 // ================= Common Widgets =================
-class SectionHeader extends StatelessWidget {
-  final String title;
-  final String subtitle;
-  const SectionHeader({super.key, required this.title, required this.subtitle});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      decoration: const BoxDecoration(
-        border: Border(bottom: BorderSide(color: AppColors.pureBlack, width: 3)),
-      ),
-      padding: const EdgeInsets.only(bottom: 8),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        crossAxisAlignment: CrossAxisAlignment.end,
-        children: [
-          Text(title, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w900)),
-          Text(subtitle, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
-        ],
-      ),
-    );
-  }
-}
-
 class StatBox extends StatelessWidget {
   final String title;
   final String value;

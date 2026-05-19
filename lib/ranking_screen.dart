@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_database/firebase_database.dart';
 import 'app_colors.dart';
-import 'main.dart' show SectionHeader;
+import 'section_header.dart';
 import 'ranking_logic.dart';
 
 class RankingScreen extends StatefulWidget {
@@ -373,10 +373,20 @@ class _RankBadge extends StatelessWidget {
       case 'C':
         return Colors.grey;
       case 'D':
-        return AppColors.deepRed;
+        return AppColors.pureWhite;
       default:
         return AppColors.pureBlack;
     }
+  }
+
+  Color get _invertedBackground {
+    if (rank.toUpperCase() == 'D') return AppColors.pureWhite;
+    return _rankColor;
+  }
+
+  Color get _invertedForeground {
+    if (rank.toUpperCase() == 'D') return AppColors.pureBlack;
+    return AppColors.pureWhite;
   }
 
   @override
@@ -384,10 +394,10 @@ class _RankBadge extends StatelessWidget {
     if (inverted) {
       return Container(
         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-        color: _rankColor,
+        color: _invertedBackground,
         child: Text(
           '$rank-RANK',
-          style: const TextStyle(color: AppColors.pureWhite, fontWeight: FontWeight.bold, fontSize: 12),
+          style: TextStyle(color: _invertedForeground, fontWeight: FontWeight.bold, fontSize: 12),
         ),
       );
     }
